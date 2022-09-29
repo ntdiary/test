@@ -1,0 +1,96 @@
+* preparation
+code for test:
+https://github.com/ntdiary/react-navigation/commit/a1f504ed1964107e4736818a9804cecae51bccff
+
+#+begin_src shell
+yarn install
+yarn example start
+#+end_src
+
+We can print a label and timestamp at the following moments:
+|----------------------------------+---------------+----------------------------|
+| moment                           | label         | remark                     |
+|----------------------------------+---------------+----------------------------|
+| invoke =createInteractionHandle= | create handle |                            |
+| invoke =clearInteractionHandle=  | clear  handle |                            |
+| drawer animation end             | animation end | means spring animation end |
+| in the deferred task             | deferred task |                            |
+|----------------------------------+---------------+----------------------------|
+These labels are printed when the drawer is opened or closed.
+
+* expected result
+=deferred task= has almost the same timestamp as the =animation end=
+
+* code analysis and testing
+** react-native-web ( platform: web )
+Its current implementation of =InteractionManager= just stubs out =createInteractionHandle= and =clearInteractionHandle=.
+=runAfterInteractions= will call the task in idle browser time instead of putting it in the queue like =react-native=.
+
+related code:
+https://github.com/necolas/react-native-web/blob/dee258ae02188befca4192ea502d4fbebc478341/packages/react-native-web/src/exports/InteractionManager/index.js#L32-L40
+
+https://caniuse.com/?search=requestIdleCallback
+
+In modern mode, The =onFinish= of the guestureEvent will not be triggered on web platform,
+so there will be no labels for =create handle= and =clear handle=
+*** current implementation
+|--------+------------------------------+-------------+-------------|
+| mode   | log                          | as expected | remark      |
+|--------+------------------------------+-------------+-------------|
+| legacy | create handle 22:36:43.968   | no          | diff: 913ms |
+|        | *deferred task 22:36:43.975* |             |             |
+|        | clear  handle 22:36:44.887   |             |             |
+|        | *animation end 22:36:44.888* |             |             |
+|        |                              |             |             |
+|--------+------------------------------+-------------+-------------|
+| modern | *deferred task 22:37:41.776* | no          | diff: 913ms |
+|        | *animation end 22:37:42.689* |             |             |
+|--------+------------------------------+-------------+-------------|
+=deferred task= is executed quickly after =create handle=, because browser is in idle time.
+
+*** add a queue feature in the InteractionManager ( need restart )
+code (just a demo):
+https://gist.github.com/ntdiary/418c884651d795385728daa53a6f9151
+
+code path: node_modules/react-native-web/dist/exports/InteractionManager/index.js
+
+|--------+------------------------------+-------------+-------------|
+| mode   | log                          | as expected | remark      |
+|--------+------------------------------+-------------+-------------|
+| legacy | create handle 22:41:20.658   | yes         | diff: 0ms   |
+|        | clear  handle 22:41:21.570   |             |             |
+|        | *deferred task 22:41:21.570* |             |             |
+|        | *animation end 22:41:21.570* |             |             |
+|        |                              |             |             |
+|--------+------------------------------+-------------+-------------|
+| modern | *deferred task 22:42:18.398* | no          | diff: 908ms |
+|        | *animation end 22:42:19.306* |             |             |
+|--------+------------------------------+-------------+-------------|
+
+** react-navigation ( platform: ios app )
+|--------+------------------------------+-------------+-------------|
+| mode   | log                          | as expected | remark      |
+|--------+------------------------------+-------------+-------------|
+| legacy | create handle 22:44:33.150   | no          | diff: 898ms |
+|        | clear  handle 22:44:33.151   |             |             |
+|        | *deferred task 22:44:33.271* |             |             |
+|        | create handle 22:44:33.273   |             |             |
+|        | clear  handle 22:44:33.273   |             |             |
+|        | create handle 22:44:33.274   |             |             |
+|        | clear  handle 22:44:34.167   |             |             |
+|        | *animation end 22:44:34.169* |             |             |
+|        |                              |             |             |
+|--------+------------------------------+-------------+-------------|
+| modern | create handle 22:45:49.731   | no          | diff: 903ms |
+|        | clear  handle 22:45:49.848   |             |             |
+|        | *deferred task 22:45:49.848* |             |             |
+|        | *animation end 22:45:50.751* |             |             |
+|--------+------------------------------+-------------+-------------|
+In legacy mode, =deferred task= is called quickly after the first =clear handle=, this is normal, because the queue is empty at that time.
+
+In modern mode, =clear handle= just means that the =onFinish= of the gestureEvent is fired instead of the end of the spring animation
+
+* summary
+I think we might need to do two things if we want to use =runAfterInteractions= :
+1. add the queue feature for =react-native-web=.
+2. invoke =clearInteractionHandle= after spring animation end instead of =onFinish= is triggered. (react-navigation)
