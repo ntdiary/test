@@ -94,6 +94,6 @@ In legacy mode, =deferred task= is called quickly after the first =clear handle=
 In modern mode, =clear handle= just means that the =onFinish= of the gestureEvent is fired instead of the end of the spring animation
 
 * summary
-I think we might need to do two things if we want to use =runAfterInteractions= :
-1. add the queue feature for =react-native-web=.
-2. invoke =clearInteractionHandle= after spring animation end instead of =onFinish= is triggered. (react-navigation)
+I think we might need to fix two things if we want to use =runAfterInteractions= :
+1. add the queue feature in the =InteractionManager= . ( =react-native-web= )
+2. invoke =clearInteractionHandle= after spring animation ends. ( =react-navigation= )
