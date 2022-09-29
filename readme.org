@@ -1,5 +1,8 @@
 * preparation
 code for test:
+https://github.com/ntdiary/react-navigation/tree/test
+
+commit:
 https://github.com/ntdiary/react-navigation/commit/a1f504ed1964107e4736818a9804cecae51bccff
 
 #+begin_src shell
